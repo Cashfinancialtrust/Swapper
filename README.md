@@ -1,2 +1,90 @@
 # Swapper
 Private
+import os
+
+# 1. Suppress low-level terminal spam BEFORE importing libraries
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['ORT_LOG_SEVERITY_LEVEL'] = '3'  # Suppresses ONNX runtime configuration blocks
+
+import cv2
+from insightface.app import FaceAnalysis
+
+# Suppress OpenCV warning and error popups in console
+cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_FATAL)
+
+
+class ProfessionalFacePipeline:
+    def __init__(self, model_name: str = 'buffalo_l', device_id: int = 0, det_size: tuple = (640, 640)):
+        """Initialize the InsightFace pipeline cleanly with GPU acceleration."""
+        print(f"[*] Initializing FaceAnalysis model '{model_name}' on device {device_id}...")
+        
+        # Initialize with CUDA first, falling back to CPU if necessary
+        self.app = FaceAnalysis(name=model_name, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+        self.app.prepare(ctx_id=device_id, det_size=det_size)
+        
+        print("[+] Pipeline successfully loaded and ready.")
+
+    def analyze_frame(self, frame):
+        """Detect faces and features in the provided video frame."""
+        if frame is None:
+            return []
+        faces = self.app.get(frame)
+        return faces
+
+
+def main():
+    # 2. Safely initialize Video Capture using DirectShow (fixes Windows MSMF async errors)
+    print("[*] Opening video capture stream...")
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    
+    if not cap.isOpened():
+        print("[-] Error: Could not open video source.")
+        return
+
+    # Set preferred resolution properties
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+    # 3. Instantiate the pipeline
+    pipeline = ProfessionalFacePipeline()
+
+    print("[*] Starting video stream loop. Press 'q' to exit.")
+    
+    try:
+        while cap.isOpened():
+            success, frame = cap.read()
+            
+            # Robust frame-drop / error check
+            if not success or frame is None:
+                print("[WARNING] Frame dropped or stream disconnected. Retrying...")
+                continue
+
+            # --- PROCESS FRAME (InsightFace / Face-Swap logic goes here) ---
+            faces = pipeline.analyze_frame(frame)
+
+            # Example professional visualization: Draw bounding boxes for detected faces
+            for face in faces:
+                bbox = face.bbox.astype(int)
+                cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
+
+            # Display the processed output cleanly
+            cv2.imshow("Professional Video Pipeline", frame)
+
+            # Exit condition
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+                
+    KeyboardInterrupt
+    except Exception as e:
+        print(f"[-] An unexpected error occurred: {e}")
+        
+    finally:
+        # Clean shutdown procedures
+        print("[*] Releasing resources and shutting down...")
+        cap.release()
+        cv2.destroyAllWindows()
+        print("[+] Done.")
+
+
+if __name__ == "__main__":
+    main()
